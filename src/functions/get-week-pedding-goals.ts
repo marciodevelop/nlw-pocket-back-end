@@ -1,16 +1,13 @@
 import dayjs from 'dayjs'
-import weekOfYear from 'dayjs/plugin/weekOfYear'
 import { db } from '../db'
 import { goalCompletions, goals } from '../db/schema'
-import { sql, and, lte, count, gte, eq } from 'drizzle-orm'
+import { and, count, eq, gte, lte, sql } from 'drizzle-orm'
 
-dayjs.extend(weekOfYear)
-
-export async function getWeekPeddingGoals() {
+export async function getWeekPendingGoals() {
   const firstDayOfWeek = dayjs().startOf('week').toDate()
   const lastDayOfWeek = dayjs().endOf('week').toDate()
 
-  const goalsCreatedUpToWeekCTE = db.$with('goals_created_up_to_week').as(
+  const goalsCreatedUpToWeek = db.$with('goals_created_up_to_week').as(
     db
       .select({
         id: goals.id,
@@ -22,7 +19,7 @@ export async function getWeekPeddingGoals() {
       .where(lte(goals.createdAt, lastDayOfWeek))
   )
 
-  const goalCompletionCountCTE = db.$with('goal_completion_count').as(
+  const goalCompletionCounts = db.$with('goal_completion_counts').as(
     db
       .select({
         goalId: goalCompletions.goalId,
@@ -38,23 +35,21 @@ export async function getWeekPeddingGoals() {
       .groupBy(goalCompletions.goalId)
   )
 
-  const penddingGoals = await db
-    .with(goalsCreatedUpToWeekCTE, goalCompletionCountCTE)
+  const pendingGoals = await db
+    .with(goalsCreatedUpToWeek, goalCompletionCounts)
     .select({
-      id: goalsCreatedUpToWeekCTE.id,
-      title: goalsCreatedUpToWeekCTE.title,
-      desiredWeeklyFrequency: goalsCreatedUpToWeekCTE.desiredWeeklyFrequency,
-      completionCount: sql`
-        COALESCE(${goalCompletionCountCTE.completionCount}, 0)
+      id: goalsCreatedUpToWeek.id,
+      title: goalsCreatedUpToWeek.title,
+      desiredWeeklyFrequency: goalsCreatedUpToWeek.desiredWeeklyFrequency,
+      completionCount: sql /*sql*/`
+        COALESCE(${goalCompletionCounts.completionCount}, 0)
       `.mapWith(Number),
     })
-    .from(goalsCreatedUpToWeekCTE)
+    .from(goalsCreatedUpToWeek)
     .leftJoin(
-      goalCompletionCountCTE,
-      eq(goalCompletionCountCTE.goalId, goalsCreatedUpToWeekCTE.id)
+      goalCompletionCounts,
+      eq(goalCompletionCounts.goalId, goalsCreatedUpToWeek.id)
     )
 
-  return {
-    penddingGoals,
-  }
+  return { pendingGoals }
 }
